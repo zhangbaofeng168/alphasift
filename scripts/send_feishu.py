@@ -5,271 +5,173 @@ import urllib.request
 from datetime import datetime
 
 
-
-WEBHOOK = os.getenv(
-    "FEISHU_WEBHOOK"
-)
-
+WEBHOOK = os.getenv("FEISHU_WEBHOOK")
 
 
 def get_latest_json():
-
 
     files = glob.glob(
         "data/runs/*.json"
     )
 
-
     if not files:
-
         return None
 
-
     files.sort(
-
         key=os.path.getmtime,
-
         reverse=True
-
     )
-
 
     return files[0]
 
 
+def load_json():
 
+    path = get_latest_json()
 
-def load_result():
-
-
-    file=get_latest_json()
-
-
-    if not file:
-
+    if not path:
         return None
 
-
-
-    print(
-        "Loading:",
-        file
-    )
-
+    print("Load:", path)
 
     with open(
-
-        file,
-
+        path,
         "r",
-
         encoding="utf-8"
-
     ) as f:
-
-
         return json.load(f)
 
 
 
+def format_report(data):
 
-def parse_result(data):
+    picks = data.get(
+        "picks",
+        []
+    )
+
+    if not picks:
+        return "没有选股结果"
 
 
-    text=""
+    text = ""
 
-
-    # 尝试兼容不同字段
-
-    stocks=(
-
-        data.get("stocks")
-
-        or data.get("results")
-
-        or data.get("ranking")
-
-        or []
-
+    text += (
+        f"策略: {data.get('strategy')}\n"
+        f"市场: {data.get('market')}\n"
+        f"股票池: {data.get('snapshot_count')}\n"
+        f"筛选后: {data.get('after_filter_count')}\n\n"
     )
 
 
-    if not stocks:
+    text += "📌 Top 10股票\n\n"
 
 
-        return "没有找到股票结果"
-
-
-
-    for i,s in enumerate(
-
-        stocks[:10],
-
-        1
-
-    ):
-
-
-        code=(
-
-            s.get("symbol")
-
-            or s.get("code")
-
-            or ""
-
-        )
-
-
-        score=(
-
-            s.get("score")
-
-            or s.get("rank_score")
-
-            or ""
-
-        )
-
-
-        reason=(
-
-            s.get("reason")
-
-            or s.get("explanation")
-
-            or ""
-
-        )
-
+    for stock in picks[:10]:
 
 
         text += (
-
-            f"{i}. {code}\n"
-
-            f"评分: {score}\n"
-
+            f"{stock.get('rank')}. "
+            f"{stock.get('code')} "
+            f"{stock.get('name')}\n"
         )
 
 
-        if reason:
+        text += (
+            f"价格: {stock.get('price')}  "
+            f"涨跌: {stock.get('change_pct')}%\n"
+        )
+
+
+        text += (
+            f"综合评分: {stock.get('final_score')}\n"
+        )
+
+
+        text += (
+            f"量化评分: {stock.get('screen_score')}\n"
+        )
+
+
+        if stock.get("llm_score"):
 
             text += (
+                f"LLM评分: {stock.get('llm_score')}\n"
+            )
 
-                f"逻辑: {reason}\n"
 
+        if stock.get("risk_level"):
+
+            text += (
+                f"风险: {stock.get('risk_level')}\n"
             )
 
 
         text += "\n"
 
 
+    if data.get("llm_ranked"):
+
+        text += "🤖 LLM已参与排序"
+
+    else:
+
+        text += (
+            "⚠️ LLM未参与排序，使用纯量化评分"
+        )
+
 
     return text
 
 
 
-
 def send_feishu(content):
-
 
     if not WEBHOOK:
 
-
         print(
-            "No FEISHU_WEBHOOK"
+            "FEISHU_WEBHOOK missing"
         )
 
         return
 
 
+    payload={
 
-    msg=f"""
-📈 AlphaSift每日选股
-
-
-时间:
-{datetime.now()}
-
-
-策略:
-{os.getenv("STRATEGY")}
-
-
-模型:
-{os.getenv("LLM_MODEL")}
-
-
-----------------
-
-
-{content}
-
-----------------
-
-
-GitHub:
-https://github.com/{os.getenv("GITHUB_REPOSITORY")}/actions/runs/{os.getenv("GITHUB_RUN_ID")}
-
-"""
-
-
-
-    body={
-
-
-        "msg_type":
-
-        "interactive",
-
-
+        "msg_type":"interactive",
 
         "card":{
 
-
             "elements":[
-
 
                 {
 
-
-                    "tag":
-
-                    "markdown",
-
+                    "tag":"markdown",
 
                     "content":
 
-                    msg
-
+                    content
 
                 }
 
-
             ]
 
-
         }
-
 
     }
 
 
-
     req=urllib.request.Request(
-
 
         WEBHOOK,
 
-
-        data=json.dumps(body).encode("utf-8"),
-
+        data=json.dumps(payload).encode(
+            "utf-8"
+        ),
 
         headers={
 
             "Content-Type":
-
             "application/json"
 
         }
@@ -277,36 +179,28 @@ https://github.com/{os.getenv("GITHUB_REPOSITORY")}/actions/runs/{os.getenv("GIT
     )
 
 
-
     urllib.request.urlopen(req)
 
 
-
     print(
-        "Feishu sent"
+        "Feishu OK"
     )
-
-
 
 
 
 if __name__=="__main__":
 
 
-    data=load_result()
+    data=load_json()
 
 
     if data:
 
-
-        report=parse_result(data)
-
+        report=format_report(data)
 
     else:
 
-
-        report="AlphaSift没有生成结果"
-
+        report="AlphaSift没有生成JSON"
 
 
     send_feishu(report)
