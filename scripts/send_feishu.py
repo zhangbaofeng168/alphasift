@@ -5,67 +5,177 @@ import urllib.request
 from datetime import datetime
 
 
-WEBHOOK = os.environ.get(
+
+WEBHOOK = os.getenv(
     "FEISHU_WEBHOOK"
 )
 
 
-def find_report():
 
-    files=[]
+def get_latest_json():
 
-    for p in [
-        "reports/*.md",
-        "reports/*.txt",
-        "data/*.csv"
-    ]:
 
-        files.extend(
-            glob.glob(p)
-        )
+    files = glob.glob(
+        "data/runs/*.json"
+    )
 
 
     if not files:
+
         return None
+
+
+    files.sort(
+
+        key=os.path.getmtime,
+
+        reverse=True
+
+    )
 
 
     return files[0]
 
 
 
-def parse_report():
 
-    file=find_report()
+def load_result():
+
+
+    file=get_latest_json()
 
 
     if not file:
 
-        return """
+        return None
 
-没有找到AlphaSift报告
 
-"""
+
+    print(
+        "Loading:",
+        file
+    )
 
 
     with open(
+
         file,
+
         "r",
+
         encoding="utf-8"
+
     ) as f:
 
-        content=f.read()
+
+        return json.load(f)
 
 
 
-    # 限制长度避免飞书超长
 
-    return content[:3000]
-
+def parse_result(data):
 
 
-def send_feishu():
+    text=""
+
+
+    # 尝试兼容不同字段
+
+    stocks=(
+
+        data.get("stocks")
+
+        or data.get("results")
+
+        or data.get("ranking")
+
+        or []
+
+    )
+
+
+    if not stocks:
+
+
+        return "没有找到股票结果"
+
+
+
+    for i,s in enumerate(
+
+        stocks[:10],
+
+        1
+
+    ):
+
+
+        code=(
+
+            s.get("symbol")
+
+            or s.get("code")
+
+            or ""
+
+        )
+
+
+        score=(
+
+            s.get("score")
+
+            or s.get("rank_score")
+
+            or ""
+
+        )
+
+
+        reason=(
+
+            s.get("reason")
+
+            or s.get("explanation")
+
+            or ""
+
+        )
+
+
+
+        text += (
+
+            f"{i}. {code}\n"
+
+            f"评分: {score}\n"
+
+        )
+
+
+        if reason:
+
+            text += (
+
+                f"逻辑: {reason}\n"
+
+            )
+
+
+        text += "\n"
+
+
+
+    return text
+
+
+
+
+def send_feishu(content):
+
 
     if not WEBHOOK:
+
 
         print(
             "No FEISHU_WEBHOOK"
@@ -75,87 +185,73 @@ def send_feishu():
 
 
 
-    report=parse_report()
-
-
-
     msg=f"""
-
-📈 AlphaSift每日选股报告
+📈 AlphaSift每日选股
 
 
 时间:
-
 {datetime.now()}
 
 
-
 策略:
-
-{os.getenv(
-    "ALPHASIFT_STRATEGY"
-)}
-
+{os.getenv("STRATEGY")}
 
 
 模型:
-
-{os.getenv(
-    "LLM_MODEL"
-)}
+{os.getenv("LLM_MODEL")}
 
 
-
-================
-
-
-{report}
+----------------
 
 
+{content}
 
-================
+----------------
 
 
-GitHub运行:
-
-https://github.com/{os.getenv('GITHUB_REPOSITORY')}/actions/runs/{os.getenv('GITHUB_RUN_ID')}
+GitHub:
+https://github.com/{os.getenv("GITHUB_REPOSITORY")}/actions/runs/{os.getenv("GITHUB_RUN_ID")}
 
 """
 
 
+
     body={
 
+
         "msg_type":
+
         "interactive",
+
+
 
         "card":{
 
-            "header":{
-
-                "title":{
-
-                    "tag":"plain_text",
-
-                    "content":
-                    "AlphaSift股票分析"
-
-                }
-
-            },
 
             "elements":[
 
+
                 {
 
-                    "tag":"markdown",
 
-                    "content":msg
+                    "tag":
+
+                    "markdown",
+
+
+                    "content":
+
+                    msg
+
 
                 }
 
+
             ]
 
+
         }
+
 
     }
 
@@ -163,15 +259,17 @@ https://github.com/{os.getenv('GITHUB_REPOSITORY')}/actions/runs/{os.getenv('GIT
 
     req=urllib.request.Request(
 
+
         WEBHOOK,
 
-        data=json.dumps(
-            body
-        ).encode("utf-8"),
+
+        data=json.dumps(body).encode("utf-8"),
+
 
         headers={
 
             "Content-Type":
+
             "application/json"
 
         }
@@ -179,7 +277,9 @@ https://github.com/{os.getenv('GITHUB_REPOSITORY')}/actions/runs/{os.getenv('GIT
     )
 
 
+
     urllib.request.urlopen(req)
+
 
 
     print(
@@ -188,6 +288,25 @@ https://github.com/{os.getenv('GITHUB_REPOSITORY')}/actions/runs/{os.getenv('GIT
 
 
 
+
+
 if __name__=="__main__":
 
-    send_feishu()
+
+    data=load_result()
+
+
+    if data:
+
+
+        report=parse_result(data)
+
+
+    else:
+
+
+        report="AlphaSift没有生成结果"
+
+
+
+    send_feishu(report)
