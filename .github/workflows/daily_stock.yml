@@ -3,16 +3,21 @@ name: AlphaSift Daily Stock
 
 on:
 
+
   # 手动测试
+
   workflow_dispatch:
 
 
+
   # 北京时间每天14:30
+
   # UTC 06:30
 
   schedule:
 
     - cron: "30 6 * * 1-5"
+
 
 
 
@@ -22,6 +27,7 @@ jobs:
   run-stock:
 
 
+
     runs-on: ubuntu-latest
 
 
@@ -29,7 +35,10 @@ jobs:
     steps:
 
 
-    # 拉代码
+
+    # =====================
+    # Checkout
+    # =====================
 
     - name: Checkout
 
@@ -37,7 +46,10 @@ jobs:
 
 
 
+
+    # =====================
     # Python
+    # =====================
 
     - name: Setup Python
 
@@ -49,11 +61,16 @@ jobs:
 
 
 
-    # 安装
 
-    - name: Install dependencies
+    # =====================
+    # Install
+    # =====================
+
+    - name: Install AlphaSift
+
 
       run: |
+
 
         python -m pip install --upgrade pip
 
@@ -61,21 +78,39 @@ jobs:
 
 
 
+
+
+    # =====================
     # 显示配置
+
+    # =====================
 
     - name: Show Config
 
+
       run: |
 
-        echo "Strategy=${{ vars.ALPHASIFT_STRATEGY }}"
 
-        echo "LLM=${{ vars.LLM_PROVIDER }}"
+        echo "===================="
 
-        echo "Model=${{ vars.LLM_MODEL }}"
+        echo "Strategy: ${{ vars.ALPHASIFT_STRATEGY }}"
+
+        echo "LLM Provider: ${{ vars.LLM_PROVIDER }}"
+
+        echo "LLM Model: ${{ vars.LLM_MODEL }}"
+
+        echo "Enable LLM: ${{ vars.ENABLE_LLM }}"
+
+        echo "===================="
 
 
 
-    # 执行AlphaSift
+
+
+    # =====================
+    # AlphaSift运行
+    # =====================
+
 
     - name: Run AlphaSift
 
@@ -83,16 +118,33 @@ jobs:
       env:
 
 
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        GEMINI_API_KEY:
 
-        DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ${{ secrets.GEMINI_API_KEY }}
 
 
-        LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+        DEEPSEEK_API_KEY:
 
-        LLM_MODEL: ${{ vars.LLM_MODEL }}
+          ${{ secrets.DEEPSEEK_API_KEY }}
+
+
+        OPENAI_API_KEY:
+
+          ${{ secrets.OPENAI_API_KEY }}
+
+
+
+        LLM_PROVIDER:
+
+          ${{ vars.LLM_PROVIDER }}
+
+
+
+        LLM_MODEL:
+
+          ${{ vars.LLM_MODEL }}
+
+
 
 
       run: |
@@ -102,26 +154,68 @@ jobs:
 
         then
 
-          echo "LLM disabled"
+
+          echo "Run without LLM"
+
 
           alphasift screen ${{ vars.ALPHASIFT_STRATEGY }} --no-llm
 
+
+
         else
 
-          echo "LLM enabled"
+
+          echo "Run with LLM"
+
+
 
           alphasift screen ${{ vars.ALPHASIFT_STRATEGY }}
+
+
 
         fi
 
 
 
-    # 保存结果
+
+
+
+    # =====================
+    # 调试输出目录
+    # =====================
+
+
+    - name: Check Result Files
+
+
+      if: always()
+
+
+      run: |
+
+
+        echo "===== FILE LIST ====="
+
+
+        find . -maxdepth 3 -type f | head -100
+
+
+
+
+
+    # =====================
+    # 上传结果
+
+    # =====================
+
 
     - name: Upload Result
 
 
-      uses: actions/upload-artifact@v5
+      if: always()
+
+
+      uses: actions/upload-artifact@v6
 
 
       with:
@@ -139,10 +233,21 @@ jobs:
           data/
 
 
+          runs/
 
-    # 飞书通知
 
-    - name: Send Feishu Message
+
+
+
+
+
+    # =====================
+    # 飞书推送
+
+    # =====================
+
+
+    - name: Send Feishu Report
 
 
       if: always()
@@ -151,84 +256,31 @@ jobs:
       env:
 
 
-        FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+        FEISHU_WEBHOOK:
+
+          ${{ secrets.FEISHU_WEBHOOK }}
 
 
-        STATUS: ${{ job.status }}
+
+        ALPHASIFT_STRATEGY:
+
+          ${{ vars.ALPHASIFT_STRATEGY }}
+
+
+
+        LLM_MODEL:
+
+          ${{ vars.LLM_MODEL }}
+
+
+
+        STATUS:
+
+          ${{ job.status }}
+
 
 
       run: |
 
 
-        python <<EOF
-
-        import os
-
-        import json
-
-        import urllib.request
-
-
-
-        webhook=os.environ["FEISHU_WEBHOOK"]
-
-        status=os.environ["STATUS"]
-
-
-
-        msg=f"""
-
-        AlphaSift每日选股完成
-
-        状态:
-        {status}
-
-
-        策略:
-        ${{ vars.ALPHASIFT_STRATEGY }}
-
-
-        模型:
-        ${{ vars.LLM_MODEL }}
-
-
-        查看结果:
-        https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-        """
-
-
-
-        data={
-
-            "msg_type":"text",
-
-            "content":{
-
-                "text":msg
-
-            }
-
-        }
-
-
-
-        req=urllib.request.Request(
-
-            webhook,
-
-            data=json.dumps(data).encode("utf-8"),
-
-            headers={
-
-                "Content-Type":"application/json"
-
-            }
-
-        )
-
-
-
-        urllib.request.urlopen(req)
-
-        EOF
+        python scripts/send_feishu.py
