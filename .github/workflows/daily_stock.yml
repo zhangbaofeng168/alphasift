@@ -158,7 +158,7 @@ jobs:
           echo "Run without LLM"
 
 
-          alphasift screen ${{ vars.ALPHASIFT_STRATEGY }} --no-llm
+          alphasift screen ${{ vars.ALPHASIFT_STRATEGY }} --no-llm --save-run
 
 
 
@@ -169,7 +169,7 @@ jobs:
 
 
 
-          alphasift screen ${{ vars.ALPHASIFT_STRATEGY }}
+          alphasift screen ${{ vars.ALPHASIFT_STRATEGY }} --save-run
 
 
 
