@@ -3,13 +3,14 @@ name: AlphaSift Daily Stock
 
 on:
 
+  # 手动测试
   workflow_dispatch:
 
 
-  schedule:
+  # 北京时间每天14:30
+  # UTC 06:30
 
-    # 北京时间14:30
-    # UTC 06:30
+  schedule:
 
     - cron: "30 6 * * 1-5"
 
@@ -17,24 +18,30 @@ on:
 
 jobs:
 
+
   run-stock:
 
 
     runs-on: ubuntu-latest
 
 
+
     steps:
 
 
+    # 拉代码
+
     - name: Checkout
 
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
 
+
+    # Python
 
     - name: Setup Python
 
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
 
       with:
 
@@ -42,7 +49,9 @@ jobs:
 
 
 
-    - name: Install
+    # 安装
+
+    - name: Install dependencies
 
       run: |
 
@@ -52,7 +61,9 @@ jobs:
 
 
 
-    - name: Load Config
+    # 显示配置
+
+    - name: Show Config
 
       run: |
 
@@ -64,34 +75,24 @@ jobs:
 
 
 
+    # 执行AlphaSift
+
     - name: Run AlphaSift
 
 
       env:
 
 
-        # API Keys
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
         DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
 
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-
-
-
-        # LLM配置
 
         LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
 
         LLM_MODEL: ${{ vars.LLM_MODEL }}
-
-
-
-        # 策略
-
-        STRATEGY: ${{ vars.ALPHASIFT_STRATEGY }}
-
 
 
       run: |
@@ -103,24 +104,24 @@ jobs:
 
           echo "LLM disabled"
 
-          alphasift screen $STRATEGY --no-llm
-
+          alphasift screen ${{ vars.ALPHASIFT_STRATEGY }} --no-llm
 
         else
 
           echo "LLM enabled"
 
-          alphasift screen $STRATEGY
-
+          alphasift screen ${{ vars.ALPHASIFT_STRATEGY }}
 
         fi
 
 
 
+    # 保存结果
+
     - name: Upload Result
 
 
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
 
 
       with:
@@ -129,8 +130,105 @@ jobs:
         name: alphasift-result-${{ github.run_number }}
 
 
-        path:
+        path: |
 
 
           reports/
 
+
+          data/
+
+
+
+    # 飞书通知
+
+    - name: Send Feishu Message
+
+
+      if: always()
+
+
+      env:
+
+
+        FEISHU_WEBHOOK: ${{ secrets.FEISHU_WEBHOOK }}
+
+
+        STATUS: ${{ job.status }}
+
+
+      run: |
+
+
+        python <<EOF
+
+        import os
+
+        import json
+
+        import urllib.request
+
+
+
+        webhook=os.environ["FEISHU_WEBHOOK"]
+
+        status=os.environ["STATUS"]
+
+
+
+        msg=f"""
+
+        AlphaSift每日选股完成
+
+        状态:
+        {status}
+
+
+        策略:
+        ${{ vars.ALPHASIFT_STRATEGY }}
+
+
+        模型:
+        ${{ vars.LLM_MODEL }}
+
+
+        查看结果:
+        https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+        """
+
+
+
+        data={
+
+            "msg_type":"text",
+
+            "content":{
+
+                "text":msg
+
+            }
+
+        }
+
+
+
+        req=urllib.request.Request(
+
+            webhook,
+
+            data=json.dumps(data).encode("utf-8"),
+
+            headers={
+
+                "Content-Type":"application/json"
+
+            }
+
+        )
+
+
+
+        urllib.request.urlopen(req)
+
+        EOF
