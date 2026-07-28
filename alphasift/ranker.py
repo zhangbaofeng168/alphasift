@@ -240,18 +240,7 @@ def _render_ranking_prompt(hints: str, context: str, candidates_text: str) -> st
     {{
       "code": "股票代码",
       "llm_score": 0-100,
-      "confidence": 0-1,
-      "sector": "行业/主题短标签，优先参考候选的 industry/concepts，并尽量统一，如 券商、银行、医药、AI算力",
-      "theme": "主要交易逻辑或主题",
-      "thesis": "该候选入选的核心投资假设",
       "reason": "一句话排序理由",
-      "risk": "一句话主要风险",
-      "catalysts": ["潜在催化1", "潜在催化2"],
-      "risk_flags": ["风险标签1"],
-      "tags": ["价值", "趋势", "防守", "事件", "流动性"],
-      "style_fit": "与策略风格的匹配度说明",
-      "watch_items": ["后续应跟踪的数据或事件"],
-      "invalidators": ["会推翻该候选逻辑的观察点"]
     }}
   ]
 }}
