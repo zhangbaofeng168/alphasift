@@ -589,7 +589,7 @@ def _parse_ranking_response_detail(response: str, candidates: list[Pick]) -> Ran
     parsed = _extract_ranking_json(response, errors)
     if parsed is None:
         errors.append("no_json_found")
-        logger.warning("RAW LLM RESPONSE: %s",response[:1000])
+        logger.warning("RAW LLM RESPONSE: %s",response)
         logger.warning("No JSON object or array found in LLM response")
         return RankingParseResult(candidates, 0.0, errors)
     if isinstance(parsed, dict):
