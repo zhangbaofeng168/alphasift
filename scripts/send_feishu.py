@@ -7,8 +7,9 @@ import urllib.request
 WEBHOOK = os.getenv("FEISHU_WEBHOOK")
 
 
+
 # =====================
-# 获取最新JSON
+# 获取最新运行JSON
 # =====================
 
 def get_latest_json():
@@ -48,33 +49,37 @@ def load_json():
 
 
 
+
 # =====================
-# 工具函数
+# 格式工具
 # =====================
 
-def val(v, default="-"):
+def val(v):
 
     if v is None or v == "":
 
-        return default
+        return "-"
 
     return v
 
 
 
-def join_list(arr):
+def fmt(v):
 
-    if not arr:
+    if v is None or v == "":
 
         return "-"
 
-    if isinstance(arr,list):
+    try:
 
-        return "、".join(
-            map(str,arr)
+        return round(
+            float(v),
+            2
         )
 
-    return str(arr)
+    except:
+
+        return v
 
 
 
@@ -87,17 +92,36 @@ def money(v):
     try:
 
         return (
-            f"{v/100000000:.1f}亿"
+            f"{float(v)/100000000:.1f}亿"
         )
 
     except:
 
-        return str(v)
+        return "-"
+
+
+
+def join_list(v):
+
+    if not v:
+
+        return "-"
+
+
+    if isinstance(v,list):
+
+        return "、".join(
+            map(str,v)
+        )
+
+
+    return str(v)
+
 
 
 
 # =====================
-# 生成飞书内容
+# 生成报告
 # =====================
 
 def format_report(data):
@@ -115,7 +139,7 @@ def format_report(data):
 
 
 
-    llm_status = (
+    status = (
         "🤖LLM排序"
         if data.get("llm_ranked")
         else
@@ -123,125 +147,104 @@ def format_report(data):
     )
 
 
-    text=f"""
-# 📈 AlphaSift每日选股
 
+    text=f"""
 策略 {val(data.get('strategy'))}
 | 市场 {val(data.get('market'))}
 
 股票池 {val(data.get('snapshot_count'))}
 | 过滤 {val(data.get('after_filter_count'))}
 
-状态 {llm_status}
-| LLM覆盖 {val(data.get('llm_coverage'))}
-
+状态 {status}
+| LLM覆盖 {fmt(data.get('llm_coverage'))}
 
 """
 
 
-    # 市场总结
+
+    # 市场观点
 
     if data.get("llm_market_view"):
 
-        text += f"""
-🌏市场:
-{data.get('llm_market_view')}
+        text += (
+            "\n🌏市场:\n"
+            +
+            data.get("llm_market_view")
+            +
+            "\n"
+        )
 
-"""
 
 
     if data.get("llm_selection_logic"):
 
-        text += f"""
-📌逻辑:
-{data.get('llm_selection_logic')}
-
-"""
-
-
-    text += "\n━━━━━━━━━━━━\n"
-
+        text += (
+            "\n📌逻辑:\n"
+            +
+            data.get("llm_selection_logic")
+            +
+            "\n"
+        )
 
 
-    # TOP10
+
+    text += "\n━━━━━━━━━━\n"
+
+
+
+    # Top10
 
     for stock in picks[:10]:
 
 
-        rank=stock.get(
+        rank = stock.get(
             "rank",
             0
         )
 
 
-        if rank <=3:
-
-            icon="🔥"
-
-        else:
-
-            icon="👀"
-
+        icon = (
+            "🔥"
+            if rank <=3
+            else
+            "👀"
+        )
 
 
-        factor=stock.get(
+        factor = stock.get(
             "factor_scores",
             {}
         )
+
 
 
         text += f"""
 
 {icon}{rank} {stock.get('code')} {stock.get('name')}
 
-💰 {val(stock.get('price'))}元 
-| 涨跌 {val(stock.get('change_pct'))}%
-| 换手 {val(stock.get('turnover_rate'))}%
+💰 {fmt(stock.get('price'))}元 | 涨{fmt(stock.get('change_pct'))}% | 换手{fmt(stock.get('turnover_rate'))}%
 
-📊 总分 {val(stock.get('final_score'))}
-| 量化 {val(stock.get('screen_score'))}
-| LLM {val(stock.get('llm_score'))}
+📊 总分{fmt(stock.get('final_score'))} | 量化{fmt(stock.get('screen_score'))} | LLM{fmt(stock.get('llm_score'))}
 
-💵 市值 {money(stock.get('total_mv'))}
-| PE {val(stock.get('pe_ratio'))}
-| PB {val(stock.get('pb_ratio'))}
+💵 市值{money(stock.get('total_mv'))} | PE{fmt(stock.get('pe_ratio'))} | PB{fmt(stock.get('pb_ratio'))}
 
-🏷 {val(stock.get('industry'))}
-| {val(stock.get('concepts'))}
+🏷 {val(stock.get('industry'))} | {val(stock.get('concepts'))}
 
+🧮 价值{fmt(factor.get('value'))} | 流动{fmt(factor.get('liquidity'))} | 动量{fmt(factor.get('momentum'))} | 稳定{fmt(factor.get('stability'))}
 
-🧮 因子:
-价值{val(factor.get('value'))}
-流动{val(factor.get('liquidity'))}
-动量{val(factor.get('momentum'))}
-稳定{val(factor.get('stability'))}
+📈 MACD {val(stock.get('macd_status'))} | RSI {val(stock.get('rsi_status'))} | 突破{fmt(stock.get('breakout_20d_pct'))}%
 
+🤖 {val(stock.get('llm_thesis') or stock.get('ranking_reason'))}
 
-📈 技术:
-MACD {val(stock.get('macd_status'))}
-| RSI {val(stock.get('rsi_status'))}
-| 突破 {val(stock.get('breakout_20d_pct'))}%
+🔥 {join_list(stock.get('llm_catalysts'))}
 
+⚠️ {val(stock.get('risk_level'))} | {join_list(stock.get('risk_flags'))}
 
-🤖 AI:
-{val(stock.get('llm_thesis') or stock.get('ranking_reason'))}
-
-
-🔥催化:
-{join_list(stock.get('llm_catalysts'))}
-
-
-⚠️风险:
-{val(stock.get('risk_level'))}
-| {join_list(stock.get('risk_flags'))}
-
-
-━━━━━━━━━━━━
-
+━━━━━━━━━━
 """
 
 
-    # LLM错误
+    # LLM异常
 
     errors=data.get(
         "llm_parse_errors",
@@ -251,17 +254,16 @@ MACD {val(stock.get('macd_status'))}
 
     if errors:
 
+        text += (
+            "\n⚠️ LLM异常:\n"
+            +
+            str(errors[0])[:300]
+        )
 
-        text += f"""
-
-⚠️ LLM异常:
-
-{str(errors[0])[:300]}
-
-"""
 
 
     return text
+
 
 
 
@@ -347,6 +349,7 @@ def send_feishu(content):
     )
 
 
+
     urllib.request.urlopen(
         req,
         timeout=10
@@ -356,6 +359,8 @@ def send_feishu(content):
     print(
         "Feishu OK"
     )
+
+
 
 
 
