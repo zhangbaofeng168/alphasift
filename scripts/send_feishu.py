@@ -2,11 +2,14 @@ import os
 import json
 import glob
 import urllib.request
-from datetime import datetime
 
 
 WEBHOOK = os.getenv("FEISHU_WEBHOOK")
 
+
+# ==========================
+# 找最新运行结果
+# ==========================
 
 def get_latest_json():
 
@@ -17,12 +20,11 @@ def get_latest_json():
     if not files:
         return None
 
-    files.sort(
-        key=os.path.getmtime,
-        reverse=True
+    return max(
+        files,
+        key=os.path.getmtime
     )
 
-    return files[0]
 
 
 def load_json():
@@ -32,100 +34,370 @@ def load_json():
     if not path:
         return None
 
+
     print("Load:", path)
+
 
     with open(
         path,
         "r",
         encoding="utf-8"
     ) as f:
+
         return json.load(f)
 
 
 
+# ==========================
+# 格式化报告
+# ==========================
+
 def format_report(data):
+
 
     picks = data.get(
         "picks",
         []
     )
 
+
     if not picks:
-        return "没有选股结果"
+
+        return "⚠️ AlphaSift没有生成选股结果"
 
 
-    text = ""
 
-    text += (
-        f"策略: {data.get('strategy')}\n"
-        f"市场: {data.get('market')}\n"
-        f"股票池: {data.get('snapshot_count')}\n"
-        f"筛选后: {data.get('after_filter_count')}\n\n"
+    llm_status = (
+        "🤖 LLM参与排序"
+        if data.get("llm_ranked")
+        else
+        "📊 纯量化排序"
     )
 
 
-    text += "📌 Top 10股票\n\n"
+    text = f"""
+# 📈 AlphaSift每日选股报告
+
+
+## 基础信息
+
+策略:
+{data.get('strategy')}
+
+策略版本:
+{data.get('strategy_version')}
+
+市场:
+{data.get('market')}
+
+运行ID:
+{data.get('run_id')}
+
+
+股票池:
+{data.get('snapshot_count')}
+
+过滤后:
+{data.get('after_filter_count')}
+
+
+状态:
+{llm_status}
+
+LLM覆盖率:
+{data.get('llm_coverage',0)}
+
+
+"""
+
+
+    # 市场观点
+
+    if data.get("llm_market_view"):
+
+        text += f"""
+## 🌏 AI市场观点
+
+{data.get('llm_market_view')}
+
+"""
+
+
+    if data.get("llm_selection_logic"):
+
+        text += f"""
+## 📌 AI选股逻辑
+
+{data.get('llm_selection_logic')}
+
+"""
+
+
+    if data.get("llm_portfolio_risk"):
+
+        text += f"""
+## ⚠️ AI组合风险
+
+{data.get('llm_portfolio_risk')}
+
+"""
+
+
+
+    text += """
+
+# ⭐ Top10股票
+
+
+"""
+
 
 
     for stock in picks[:10]:
 
 
-        text += (
-            f"{stock.get('rank')}. "
-            f"{stock.get('code')} "
-            f"{stock.get('name')}\n"
+        factor = stock.get(
+            "factor_scores",
+            {}
         )
 
 
-        text += (
-            f"价格: {stock.get('price')}  "
-            f"涨跌: {stock.get('change_pct')}%\n"
-        )
+        text += f"""
+━━━━━━━━━━━━━━
+
+## {stock.get('rank')}. {stock.get('code')} {stock.get('name')}
 
 
-        text += (
-            f"综合评分: {stock.get('final_score')}\n"
-        )
+### 💰行情
+
+价格:
+{stock.get('price')}
+
+涨跌:
+{stock.get('change_pct')}%
+
+成交额:
+{format_amount(stock.get('amount'))}
+
+总市值:
+{format_amount(stock.get('total_mv'))}
+
+换手率:
+{stock.get('turnover_rate')}%
 
 
-        text += (
-            f"量化评分: {stock.get('screen_score')}\n"
-        )
+
+### 📊评分
+
+综合评分:
+{stock.get('final_score')}
+
+量化评分:
+{stock.get('screen_score')}
+
+LLM评分:
+{stock.get('llm_score')}
 
 
-        if stock.get("llm_score"):
 
-            text += (
-                f"LLM评分: {stock.get('llm_score')}\n"
-            )
+### 🏷行业
 
+行业:
+{stock.get('industry')}
 
-        if stock.get("risk_level"):
-
-            text += (
-                f"风险: {stock.get('risk_level')}\n"
-            )
+概念:
+{stock.get('concepts')}
 
 
-        text += "\n"
+LLM行业:
+{stock.get('llm_sector')}
 
 
-    if data.get("llm_ranked"):
+LLM主题:
+{stock.get('llm_theme')}
 
-        text += "🤖 LLM已参与排序"
 
-    else:
 
-        text += (
-            "⚠️ LLM未参与排序，使用纯量化评分"
-        )
+
+### 🧮因子评分
+
+价值:
+{factor.get('value')}
+
+流动性:
+{factor.get('liquidity')}
+
+动量:
+{factor.get('momentum')}
+
+反转:
+{factor.get('reversal')}
+
+活跃:
+{factor.get('activity')}
+
+稳定:
+{factor.get('stability')}
+
+规模:
+{factor.get('size')}
+
+热点:
+{factor.get('theme_heat')}
+
+
+
+### 📈技术指标
+
+
+MACD:
+{stock.get('macd_status')}
+
+
+RSI:
+{stock.get('rsi_status')}
+
+
+20日突破:
+{stock.get('breakout_20d_pct')}%
+
+
+20日波动:
+{stock.get('volatility_20d_pct')}%
+
+
+最大回撤:
+{stock.get('max_drawdown_20d_pct')}%
+
+
+ATR:
+{stock.get('atr_20_pct')}%
+
+
+
+
+### 🤖 AI分析
+
+
+投资逻辑:
+
+{stock.get('llm_thesis')}
+
+
+风格:
+
+{stock.get('llm_style_fit')}
+
+
+催化:
+
+{join_list(stock.get('llm_catalysts'))}
+
+
+风险:
+
+{join_list(stock.get('llm_risks'))}
+
+
+
+
+### ⚠️风险
+
+
+风险等级:
+
+{stock.get('risk_level')}
+
+
+风险评分:
+
+{stock.get('risk_score')}
+
+
+风险标签:
+
+{join_list(stock.get('risk_flags'))}
+
+
+"""
+
+
+    # LLM错误
+
+    errors=data.get(
+        "llm_parse_errors",
+        []
+    )
+
+
+    if errors:
+
+
+        text += """
+
+━━━━━━━━━━━━━━
+
+⚠️ LLM异常
+
+"""
+
+
+        text += str(errors[0])[:500]
+
 
 
     return text
 
 
 
+
+# ==========================
+# 工具函数
+# ==========================
+
+
+def join_list(value):
+
+    if not value:
+
+        return "无"
+
+    if isinstance(value,list):
+
+        return "、".join(
+            map(str,value)
+        )
+
+    return str(value)
+
+
+
+def format_amount(value):
+
+    if not value:
+
+        return "0"
+
+
+    try:
+
+        return (
+            f"{value/100000000:.2f} 亿"
+        )
+
+    except:
+
+        return str(value)
+
+
+
+# ==========================
+# 飞书发送
+# ==========================
+
+
 def send_feishu(content):
+
 
     if not WEBHOOK:
 
@@ -136,21 +408,42 @@ def send_feishu(content):
         return
 
 
+
     payload={
 
-        "msg_type":"interactive",
+        "msg_type":
+        "interactive",
+
 
         "card":{
 
+
+            "header":{
+
+
+                "title":{
+
+                    "tag":
+                    "plain_text",
+
+                    "content":
+                    "📈 AlphaSift每日选股"
+
+                }
+
+            },
+
+
             "elements":[
+
 
                 {
 
-                    "tag":"markdown",
+                    "tag":
+                    "markdown",
 
                     "content":
-
-                    content
+                    content[:30000]
 
                 }
 
@@ -161,13 +454,18 @@ def send_feishu(content):
     }
 
 
-    req=urllib.request.Request(
+
+    req = urllib.request.Request(
 
         WEBHOOK,
 
-        data=json.dumps(payload).encode(
+        data=json.dumps(
+            payload,
+            ensure_ascii=False
+        ).encode(
             "utf-8"
         ),
+
 
         headers={
 
@@ -179,7 +477,10 @@ def send_feishu(content):
     )
 
 
-    urllib.request.urlopen(req)
+    urllib.request.urlopen(
+        req,
+        timeout=10
+    )
 
 
     print(
@@ -188,19 +489,27 @@ def send_feishu(content):
 
 
 
+
+# ==========================
+# main
+# ==========================
+
+
 if __name__=="__main__":
 
 
-    data=load_json()
+    data = load_json()
 
 
     if data:
 
-        report=format_report(data)
+        report = format_report(data)
 
     else:
 
-        report="AlphaSift没有生成JSON"
+        report = (
+            "❌ AlphaSift没有生成JSON"
+        )
 
 
     send_feishu(report)
